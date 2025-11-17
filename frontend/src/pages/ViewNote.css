@@ -1,0 +1,165 @@
+.view-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem 2.5rem;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: white;
+  border-radius: 50px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #4b5563;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.back-btn:hover {
+  background: #f3f4f6;
+}
+
+.view-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.action-btn-large {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 50px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.action-btn-large.pin-btn {
+  background: #fef3c7;
+  color: #f59e0b;
+}
+
+.action-btn-large.pin-btn:hover {
+  background: #fde68a;
+}
+
+.action-btn-large.pin-btn.pinned {
+  background: #f59e0b;
+  color: white;
+}
+
+.action-btn-large.edit-btn {
+  background: #dbeafe;
+  color: #3b82f6;
+}
+
+.action-btn-large.edit-btn:hover {
+  background: #bfdbfe;
+}
+
+.action-btn-large.delete-btn {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.action-btn-large.delete-btn:hover {
+  background: #fecaca;
+}
+
+.view-content {
+  padding: 2.5rem;
+}
+
+.view-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.view-category {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.view-date {
+  color: #9ca3af;
+  font-size: 0.95rem;
+}
+
+.view-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 2rem;
+  line-height: 1.2;
+}
+
+.view-text {
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: #4b5563;
+}
+
+.view-text p {
+  margin-bottom: 1rem;
+}
+
+.error-message {
+  text-align: center;
+  padding: 3rem;
+  background: white;
+  border-radius: 20px;
+  color: #ef4444;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .view-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .view-actions {
+    justify-content: stretch;
+  }
+
+  .action-btn-large {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .view-content {
+    padding: 1.5rem;
+  }
+
+  .view-title {
+    font-size: 1.75rem;
+  }
+
+  .view-text {
+    font-size: 1rem;
+  }
+}
