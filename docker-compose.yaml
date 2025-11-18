@@ -32,8 +32,8 @@ services:
     networks:
       - notes-network
     expose:
-      - "5000" 
-      
+      - "5000"
+
   frontend:
     build:
       context: ./frontend
@@ -42,7 +42,7 @@ services:
     networks:
       - notes-network
     ports:
-      - "80:80" # public port
+      - "80:80"
 
 networks:
   notes-network:
