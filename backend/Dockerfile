@@ -7,7 +7,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Copy only package*.json to install dependecies
-COPY package*.json .
+COPY package*.json ./
 
 # install the dependencies using command npm ci
 RUN npm ci
@@ -19,4 +19,4 @@ COPY . .
 EXPOSE 5000
 
 # start the backend
-CMD ["node", "app.js"]
+CMD ["node", "server.js"]

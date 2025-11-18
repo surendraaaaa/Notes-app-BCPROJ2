@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # why npm ci and not npm install? because npm ci is fast and it consider lock file and make sure required version of dependencies are installed
-RUN npm ci 
+RUN npm install
 
 # copy source code to working directory
 COPY . .
