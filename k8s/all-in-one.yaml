@@ -152,7 +152,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: surendraprajapati/notes_backend:v1  
+          image: surendraprajapati/notes_backend:latest  
           ports:
             - containerPort: 5000
           envFrom:
@@ -242,7 +242,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: surendraprajapati/notes_frontend:v1  
+          image: surendraprajapati/notes_frontend:latest  
           ports:
             - containerPort: 80
 ---
