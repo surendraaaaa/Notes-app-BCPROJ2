@@ -21,7 +21,10 @@ resource "aws_lb_listener" "sonar_listener" {
   load_balancer_arn = aws_lb.sonar_alb.arn
   port              = var.sonar_port
   protocol          = "HTTP"
-  default_action { type = "forward"; target_group_arn = aws_lb_target_group.sonar_tg.arn }
+  default_action {
+  type             = "forward"
+  target_group_arn = aws_lb_target_group.sonar_tg.arn
+  }
 }
 
 resource "aws_lb_target_group_attachment" "sonar_attach" {
@@ -50,7 +53,10 @@ resource "aws_lb_listener" "nexus_listener" {
   load_balancer_arn = aws_lb.nexus_alb.arn
   port              = var.nexus_port
   protocol          = "HTTP"
-  default_action { type = "forward"; target_group_arn = aws_lb_target_group.nexus_tg.arn }
+  default_action { 
+    type = "forward" 
+    target_group_arn = aws_lb_target_group.nexus_tg.arn 
+    }
 }
 
 resource "aws_lb_target_group_attachment" "nexus_attach" {
