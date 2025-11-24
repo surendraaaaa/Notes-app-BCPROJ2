@@ -1,0 +1,285 @@
+###############################################
+# 1. NAMESPACE
+###############################################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: notes-app
+---
+###############################################
+# 2. STORAGECLASS (EKS EBS gp3)
+###############################################
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3-ebs
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  fsType: ext4
+---
+###############################################
+# 3. MYSQL SECRET
+###############################################
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: notes-app
+type: Opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: root
+  MYSQL_DATABASE: notes_db
+---
+###############################################
+# 4. MYSQL PVC
+###############################################
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: notes-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3-ebs
+  resources:
+    requests:
+      storage: 5Gi
+---
+###############################################
+# 5. MYSQL DEPLOYMENT
+###############################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: notes-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_DATABASE
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+###############################################
+# 6. MYSQL SERVICE
+###############################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: notes-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+###############################################
+# 7. BACKEND CONFIGMAP
+###############################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: notes-app
+data:
+  PORT: "5000"
+  DB_HOST: "mysql"
+  DB_NAME: "notes_db"
+---
+###############################################
+# 8. BACKEND SECRET
+###############################################
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secret
+  namespace: notes-app
+type: Opaque
+stringData:
+  DB_USER: root
+  DB_PASSWORD: root
+---
+###############################################
+# 9. BACKEND DEPLOYMENT
+###############################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: notes-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: surendraprajapati/notes_backend:v1  
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+###############################################
+# 10. BACKEND SERVICE
+###############################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: notes-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+  selector:
+    app: backend
+---
+###############################################
+# 11. BACKEND HPA
+###############################################
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: notes-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+###############################################
+# 12. FRONTEND CONFIGMAP
+###############################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: notes-app
+data:
+  REACT_APP_API_URL: "http://backend:5000"
+---
+###############################################
+# 13. FRONTEND DEPLOYMENT
+###############################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: notes-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: surendraprajapati/notes_frontend:v1  
+          ports:
+            - containerPort: 80
+---
+###############################################
+# 14. FRONTEND SERVICE
+###############################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: notes-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+  selector:
+    app: frontend
+---
+###############################################
+# 15. INGRESS (requires ingress-nginx)
+###############################################
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: notes-ingress
+  namespace: notes-app
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: notes.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
