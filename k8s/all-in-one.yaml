@@ -1,14 +1,10 @@
-
 # NAMESPACE
-
 apiVersion: v1
 kind: Namespace
 metadata:
   name: notes-app
 ---
-
 # STORAGECLASS (EKS EBS gp3)
-
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -20,9 +16,7 @@ parameters:
   type: gp3
   fsType: ext4
 ---
-
 # MYSQL SECRET
-
 apiVersion: v1
 kind: Secret
 metadata:
@@ -33,9 +27,7 @@ stringData:
   MYSQL_ROOT_PASSWORD: root
   MYSQL_DATABASE: notes_db
 ---
-
 # MYSQL PVC
-
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -49,9 +41,7 @@ spec:
     requests:
       storage: 5Gi
 ---
-
 # MYSQL DEPLOYMENT
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,32 +76,32 @@ spec:
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
+
           readinessProbe:
             exec:
-             
               command:
-                - /bin/sh
+                - sh
                 - -c
-                - mysqladmin ping -h 127.0.0.1 -uroot -proot
-            initialDelaySeconds: 15
+                - mysqladmin ping -h 127.0.0.1 -u root -p"${MYSQL_ROOT_PASSWORD}"
+            initialDelaySeconds: 20
             periodSeconds: 5
-            failureThreshold: 6
+            failureThreshold: 10
+
           livenessProbe:
             exec:
               command:
-                - /bin/sh
+                - sh
                 - -c
-                - mysqladmin ping -h 127.0.0.1 -uroot -proot
+                - mysqladmin ping -h 127.0.0.1 -u root -p"${MYSQL_ROOT_PASSWORD}"
             initialDelaySeconds: 30
             periodSeconds: 10
+
       volumes:
         - name: mysql-data
           persistentVolumeClaim:
             claimName: mysql-pvc
 ---
-
 # MYSQL SERVICE
-
 apiVersion: v1
 kind: Service
 metadata:
@@ -125,9 +115,7 @@ spec:
   selector:
     app: mysql
 ---
-
 # BACKEND CONFIGMAP
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -135,14 +123,11 @@ metadata:
   namespace: notes-app
 data:
   PORT: "5000"
-  DB_HOST: "mysql"
+  DB_HOST: "mysql.notes-app.svc.cluster.local"
   DB_NAME: "notes_db"
-  # NOTE: keep DB_USERNAME here so backend receives same var name as docker-compose
-  DB_USERNAME: "root"
+  DB_USER: "root"
 ---
-
 # BACKEND SECRET
-
 apiVersion: v1
 kind: Secret
 metadata:
@@ -150,12 +135,9 @@ metadata:
   namespace: notes-app
 type: Opaque
 stringData:
-  # only password in the secret (username in configmap)
   DB_PASSWORD: root
 ---
-
-#  BACKEND DEPLOYMENT
-
+# BACKEND DEPLOYMENT
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -174,24 +156,28 @@ spec:
       initContainers:
         - name: wait-for-mysql
           image: busybox:1.35
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: DB_HOST
           command:
-            - /bin/sh
+            - sh
             - -c
             - |
-              echo "Waiting for ${DB_HOST:-mysql}:3306..."
-              i=0
-              until nc -z ${DB_HOST:-mysql} 3306 || [ $i -ge 60 ]; do
-                i=$((i+1))
-                echo "waiting for mysql ($i)..."
+              echo "Waiting for $DB_HOST:3306..."
+              for i in $(seq 1 60); do
+                nc -z "$DB_HOST" 3306 && exit 0
+                echo "waiting for mysql ($i/60)..."
                 sleep 2
               done
-              if [ $i -ge 60 ]; then
-                echo "timeout waiting for mysql"
-                exit 1
-              fi
+              echo "❌ Timeout waiting for MySQL"
+              exit 1
+
       containers:
         - name: backend
-          image: surendraprajapati/notes_backend:latest
+          image: surendraprajapati/notes_backend:v1
           ports:
             - containerPort: 5000
           envFrom:
@@ -199,26 +185,23 @@ spec:
                 name: backend-config
             - secretRef:
                 name: backend-secret
+
           readinessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 5
-            failureThreshold: 6
+            failureThreshold: 5
+
           livenessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 30
+            initialDelaySeconds: 20
             periodSeconds: 10
-
-
-          
 ---
-
 # BACKEND SERVICE
-
 apiVersion: v1
 kind: Service
 metadata:
@@ -232,9 +215,7 @@ spec:
   selector:
     app: backend
 ---
-
 # BACKEND HPA
-
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -255,20 +236,16 @@ spec:
           type: Utilization
           averageUtilization: 50
 ---
-
 # FRONTEND CONFIGMAP
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: frontend-config
   namespace: notes-app
 data:
-  REACT_APP_API_URL: "http://backend:5000"
+  REACT_APP_API_URL: "http://backend.notes-app.svc.cluster.local:5000"
 ---
-
-#  FRONTEND DEPLOYMENT
-
+# FRONTEND DEPLOYMENT
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -286,10 +263,9 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: surendraprajapati/notes_frontend:latest
+          image: surendraprajapati/notes_frontend:v1
           ports:
             - containerPort: 80
-
           envFrom:
             - configMapRef:
                 name: frontend-config
@@ -307,11 +283,8 @@ spec:
               port: 80
             initialDelaySeconds: 15
             periodSeconds: 10
-
 ---
-
 # FRONTEND SERVICE (LoadBalancer)
-
 apiVersion: v1
 kind: Service
 metadata:
@@ -324,8 +297,3 @@ spec:
       targetPort: 80
   selector:
     app: frontend
----
-
-# End of file
-
-

@@ -10,11 +10,12 @@ services:
     volumes:
       - notes-volume:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost --silent"]
       interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 20
+      start_period: 20s
+
     networks:
       - notes-network
 
@@ -23,7 +24,7 @@ services:
       context: ./backend
     environment:
       DB_HOST: mysql
-      DB_USERNAME: root
+      DB_USER: root
       DB_PASSWORD: root
       DB_NAME: notes_db
     depends_on:
