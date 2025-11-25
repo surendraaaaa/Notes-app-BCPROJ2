@@ -1,14 +1,14 @@
-###############################################
-# 1. NAMESPACE
-###############################################
+
+# NAMESPACE
+
 apiVersion: v1
 kind: Namespace
 metadata:
   name: notes-app
 ---
-###############################################
-# 2. STORAGECLASS (EKS EBS gp3)
-###############################################
+
+# STORAGECLASS (EKS EBS gp3)
+
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -20,9 +20,9 @@ parameters:
   type: gp3
   fsType: ext4
 ---
-###############################################
-# 3. MYSQL SECRET
-###############################################
+
+# MYSQL SECRET
+
 apiVersion: v1
 kind: Secret
 metadata:
@@ -33,9 +33,9 @@ stringData:
   MYSQL_ROOT_PASSWORD: root
   MYSQL_DATABASE: notes_db
 ---
-###############################################
-# 4. MYSQL PVC
-###############################################
+
+# MYSQL PVC
+
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -49,9 +49,9 @@ spec:
     requests:
       storage: 5Gi
 ---
-###############################################
-# 5. MYSQL DEPLOYMENT
-###############################################
+
+# MYSQL DEPLOYMENT
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,14 +86,32 @@ spec:
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+             
+              command:
+                - /bin/sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -uroot -proot
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -uroot -proot
+            initialDelaySeconds: 30
+            periodSeconds: 10
       volumes:
         - name: mysql-data
           persistentVolumeClaim:
             claimName: mysql-pvc
 ---
-###############################################
-# 6. MYSQL SERVICE
-###############################################
+
+# MYSQL SERVICE
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -103,12 +121,13 @@ spec:
   type: ClusterIP
   ports:
     - port: 3306
+      targetPort: 3306
   selector:
     app: mysql
 ---
-###############################################
-# 7. BACKEND CONFIGMAP
-###############################################
+
+# BACKEND CONFIGMAP
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -118,10 +137,12 @@ data:
   PORT: "5000"
   DB_HOST: "mysql"
   DB_NAME: "notes_db"
+  # NOTE: keep DB_USERNAME here so backend receives same var name as docker-compose
+  DB_USERNAME: "root"
 ---
-###############################################
-# 8. BACKEND SECRET
-###############################################
+
+# BACKEND SECRET
+
 apiVersion: v1
 kind: Secret
 metadata:
@@ -129,12 +150,12 @@ metadata:
   namespace: notes-app
 type: Opaque
 stringData:
-  DB_USER: root
+  # only password in the secret (username in configmap)
   DB_PASSWORD: root
 ---
-###############################################
-# 9. BACKEND DEPLOYMENT
-###############################################
+
+#  BACKEND DEPLOYMENT
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -150,9 +171,27 @@ spec:
       labels:
         app: backend
     spec:
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.35
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for ${DB_HOST:-mysql}:3306..."
+              i=0
+              until nc -z ${DB_HOST:-mysql} 3306 || [ $i -ge 60 ]; do
+                i=$((i+1))
+                echo "waiting for mysql ($i)..."
+                sleep 2
+              done
+              if [ $i -ge 60 ]; then
+                echo "timeout waiting for mysql"
+                exit 1
+              fi
       containers:
         - name: backend
-          image: surendraprajapati/notes_backend:latest  
+          image: surendraprajapati/notes_backend:latest
           ports:
             - containerPort: 5000
           envFrom:
@@ -164,18 +203,22 @@ spec:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 15
             periodSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
+
+
+          
 ---
-###############################################
-# 10. BACKEND SERVICE
-###############################################
+
+# BACKEND SERVICE
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -185,12 +228,13 @@ spec:
   type: ClusterIP
   ports:
     - port: 5000
+      targetPort: 5000
   selector:
     app: backend
 ---
-###############################################
-# 11. BACKEND HPA
-###############################################
+
+# BACKEND HPA
+
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -211,9 +255,9 @@ spec:
           type: Utilization
           averageUtilization: 50
 ---
-###############################################
-# 12. FRONTEND CONFIGMAP
-###############################################
+
+# FRONTEND CONFIGMAP
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -222,9 +266,9 @@ metadata:
 data:
   REACT_APP_API_URL: "http://backend:5000"
 ---
-###############################################
-# 13. FRONTEND DEPLOYMENT
-###############################################
+
+#  FRONTEND DEPLOYMENT
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -242,44 +286,46 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: surendraprajapati/notes_frontend:latest  
+          image: surendraprajapati/notes_frontend:latest
           ports:
             - containerPort: 80
+
+          envFrom:
+            - configMapRef:
+                name: frontend-config
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
 ---
-###############################################
-# 14. FRONTEND SERVICE
-###############################################
+
+# FRONTEND SERVICE (LoadBalancer)
+
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend
   namespace: notes-app
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
     - port: 80
+      targetPort: 80
   selector:
     app: frontend
 ---
-###############################################
-# 15. INGRESS (requires ingress-nginx)
-###############################################
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: notes-ingress
-  namespace: notes-app
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-    - host: notes.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend
-                port:
-                  number: 80
+
+# End of file
+
+

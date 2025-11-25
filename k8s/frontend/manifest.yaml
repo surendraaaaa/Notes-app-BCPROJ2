@@ -1,5 +1,4 @@
-
-# FRONTEND CONFIGMAP
+ # FRONTEND CONFIGMAP
 
 apiVersion: v1
 kind: ConfigMap
@@ -10,7 +9,7 @@ data:
   REACT_APP_API_URL: "http://backend:5000"
 ---
 
-# FRONTEND DEPLOYMENT
+#  FRONTEND DEPLOYMENT
 
 apiVersion: apps/v1
 kind: Deployment
@@ -29,12 +28,31 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: surendraprajapati/notes_frontend:v1   
+          image: surendraprajapati/notes_frontend:latest
           ports:
             - containerPort: 80
+
+          envFrom:
+            - configMapRef:
+                name: frontend-config
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
 ---
 
-# FRONTEND SERVICE
+# FRONTEND SERVICE (LoadBalancer)
 
 apiVersion: v1
 kind: Service
@@ -42,31 +60,10 @@ metadata:
   name: frontend
   namespace: notes-app
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
     - port: 80
+      targetPort: 80
   selector:
     app: frontend
 ---
-
-# INGRESS (requires ingress-nginx)
-
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: notes-ingress
-  namespace: notes-app
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-    - host: notes.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend
-                port:
-                  number: 80

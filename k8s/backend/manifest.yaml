@@ -1,5 +1,4 @@
-
-# BACKEND CONFIGMAP FOR INJECTING ENVIRONMENT VARIABLES
+# BACKEND CONFIGMAP
 
 apiVersion: v1
 kind: ConfigMap
@@ -10,9 +9,11 @@ data:
   PORT: "5000"
   DB_HOST: "mysql"
   DB_NAME: "notes_db"
+  # NOTE: keep DB_USERNAME here so backend receives same var name as docker-compose
+  DB_USERNAME: "root"
 ---
 
-# BACKEND SECRET FOR DATABASE CREDS
+# BACKEND SECRET
 
 apiVersion: v1
 kind: Secret
@@ -21,11 +22,11 @@ metadata:
   namespace: notes-app
 type: Opaque
 stringData:
-  DB_USER: root
+  # only password in the secret (username in configmap)
   DB_PASSWORD: root
 ---
 
-# BACKEND DEPLOYMENT 
+#  BACKEND DEPLOYMENT
 
 apiVersion: apps/v1
 kind: Deployment
@@ -42,9 +43,27 @@ spec:
       labels:
         app: backend
     spec:
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.35
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for ${DB_HOST:-mysql}:3306..."
+              i=0
+              until nc -z ${DB_HOST:-mysql} 3306 || [ $i -ge 60 ]; do
+                i=$((i+1))
+                echo "waiting for mysql ($i)..."
+                sleep 2
+              done
+              if [ $i -ge 60 ]; then
+                echo "timeout waiting for mysql"
+                exit 1
+              fi
       containers:
         - name: backend
-          image: surendraprajapati/notes_backend:v1   
+          image: surendraprajapati/notes_backend:latest
           ports:
             - containerPort: 5000
           envFrom:
@@ -56,14 +75,18 @@ spec:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 15
             periodSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
+
+
+          
 ---
 
 # BACKEND SERVICE
@@ -77,11 +100,12 @@ spec:
   type: ClusterIP
   ports:
     - port: 5000
+      targetPort: 5000
   selector:
     app: backend
 ---
 
-# BACKEND HPA 
+# BACKEND HPA
 
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -102,3 +126,4 @@ spec:
         target:
           type: Utilization
           averageUtilization: 50
+---
