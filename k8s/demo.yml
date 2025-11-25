@@ -1,0 +1,259 @@
+# NAMESPACE
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: notes-app
+---
+# MYSQL PVC (k3s local-path)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: notes-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# MYSQL SECRET
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: notes-app
+type: Opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: root
+  MYSQL_DATABASE: notes_db
+---
+# MYSQL DEPLOYMENT
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: notes-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_DATABASE
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"${MYSQL_ROOT_PASSWORD}"
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mysqladmin ping -h 127.0.0.1 -u root -p"${MYSQL_ROOT_PASSWORD}"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+# MYSQL SERVICE
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: notes-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: 3306
+  selector:
+    app: mysql
+---
+# BACKEND CONFIGMAP
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: notes-app
+data:
+  PORT: "5000"
+  DB_HOST: "mysql.notes-app.svc.cluster.local"
+  DB_NAME: "notes_db"
+  DB_USER: "root"
+---
+# BACKEND SECRET
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secret
+  namespace: notes-app
+type: Opaque
+stringData:
+  DB_PASSWORD: root
+---
+# BACKEND DEPLOYMENT (no initContainer)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: notes-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: surendraprajapati/notes_backend:v1
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+          readinessProbe:
+            httpGet:
+              path: /api/notes
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+# BACKEND SERVICE
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: notes-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: backend
+---
+# BACKEND HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: notes-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+# FRONTEND CONFIGMAP
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: notes-app
+data:
+  REACT_APP_API_URL: "http://backend.notes-app.svc.cluster.local:5000"
+---
+# FRONTEND DEPLOYMENT
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: notes-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: surendraprajapati/notes_frontend:v1
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: frontend-config
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+# FRONTEND SERVICE (NodePort for k3s)
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: notes-app
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+  selector:
+    app: frontend
