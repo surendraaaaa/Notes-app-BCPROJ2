@@ -54,19 +54,35 @@ resource "aws_instance" "jenkins" {
   key_name      = var.key_name
   security_groups = [aws_security_group.jenkins_sg.id]
   iam_instance_profile = aws_iam_instance_profile.jenkins_profile.name
+
   user_data = <<-EOF
     #!/bin/bash
-    apt update -y
-    apt install -y openjdk-17-jdk wget gnupg
-    wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | apt-key add -
-    sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
-    apt update -y
-    apt install -y jenkins
-    systemctl enable jenkins
-    systemctl start jenkins
+    set -e
+    sudo apt update -y
+    sudo apt install -y openjdk-17-jdk-headless wget gnupg
+
+    # Add Jenkins repo key
+    sudo mkdir -p /etc/apt/keyrings
+    sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
+      https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+
+    # Add Jenkins repo
+    echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] \
+      https://pkg.jenkins.io/debian-stable binary/" | \
+      sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+    # Install Jenkins
+    sudo apt update -y
+    sudo apt install -y jenkins
+
+    # Enable and start Jenkins
+    sudo systemctl enable jenkins
+    sudo systemctl start jenkins
   EOF
+
   tags = { Name = "jenkins-server" }
 }
+
 
 # SonarQube
 resource "aws_instance" "sonarqube" {
@@ -79,11 +95,14 @@ resource "aws_instance" "sonarqube" {
   private_ip     = "10.0.11.10"
   user_data = <<-EOF
     #!/bin/bash
-    apt update -y
-    apt install -y docker.io docker-compose
-    systemctl enable docker
-    systemctl start docker
-    docker run -d --name sonarqube -p ${var.sonar_port}:9000 sonarqube:lts
+      set -e
+      sudo apt update -y
+      sudo apt install -y docker.io
+      sudo systemctl enable docker
+      sudo systemctl start docker
+      sudo usermod -aG docker ubuntu 
+    
+    docker run -d --name sonar -p 9000:9000 mc1arke/sonarqube-with-community-branch-plugin
   EOF
   tags = { Name = "sonarqube-server" }
 }
@@ -99,11 +118,15 @@ resource "aws_instance" "nexus" {
   private_ip     = "10.0.12.10"
   user_data = <<-EOF
     #!/bin/bash
-    apt update -y
-    apt install -y docker.io docker-compose
-    systemctl enable docker
-    systemctl start docker
-    docker run -d --name nexus -p ${var.nexus_port}:8081 sonatype/nexus3
+      set -e
+      sudo apt update -y
+      sudo apt install -y docker.io
+      sudo systemctl enable docker
+      sudo systemctl start docker
+      sudo usermod -aG docker ubuntu 
+    
+    docker run -d --name nexus -p 8081:8081 sonatype/nexus3
+
   EOF
   tags = { Name = "nexus-server" }
 }
