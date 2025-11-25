@@ -172,7 +172,7 @@ spec:
                 echo "waiting for mysql ($i/60)..."
                 sleep 2
               done
-              echo "❌ Timeout waiting for MySQL"
+              echo "Timeout waiting for MySQL"
               exit 1
 
       containers:
@@ -188,7 +188,7 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/notes
               port: 5000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -196,7 +196,7 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/notes
               port: 5000
             initialDelaySeconds: 20
             periodSeconds: 10
@@ -234,7 +234,7 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 50
+          averageUtilization: 80
 ---
 # FRONTEND CONFIGMAP
 apiVersion: v1
