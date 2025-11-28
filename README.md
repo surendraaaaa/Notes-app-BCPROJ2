@@ -1,5 +1,9 @@
 # End-to-End Deployment of Containerized Applications Using DevOps, GitOps, and DevSecOps with CI/CD Pipelines
 
+## Diagram
+<img width="975" height="380" alt="image" src="https://github.com/user-attachments/assets/56686b83-d57e-455d-b2fa-36d6d15bdf88" />
+
+
 ## Project Overview
 
 This project demonstrates a complete end-to-end DevOps pipeline for a full-stack CRUD Notes Application. The application consists of:
